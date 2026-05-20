@@ -4,15 +4,18 @@ import cv2
 import numpy as np
 from skimage.feature import local_binary_pattern
 
-# --- 1. FUNGSI UNTUK MEMUAT MODEL (.PKL) ---
-@st.cache_resource # Menggunakan cache agar model tidak di-load terus-menerus setiap kali ada interaksi
+# --- 1. Load Model (.PKL) ---
+
+@st.cache_resource
 def load_model_app(model_path="model_jst_waste.pkl"):
-    with open(model_path, "rb") as f:
+    current_dir = os.path.dirname(__index__ if '__index__' in locals() else __file__)
+    absolute_path = os.path.join(current_dir, model_path)
+
+    with open(absolute_path, "rb") as f:
         model = pickle.load(f)
     return model
 
-# --- 2. FUNGSI EKSTRAKSI FITUR DARI MATRIKS GAMBAR (OPENCV) ---
-# Modifikasi dari fungsi extract_features_app agar menerima matriks gambar langsung, bukan path string
+# --- 2. Ekstraksi Fitur (OPENCV) ---
 def extract_features_from_image(img, small_width=20, small_height=30):
     if img is None:
         raise ValueError("Matriks gambar kosong atau tidak valid.")
@@ -63,13 +66,12 @@ def extract_features_from_image(img, small_width=20, small_height=30):
         lbp_hist, gray_hist, edge_density, lap_var, entropy, contrast
     ]).astype(np.float32)
 
-# --- 3. FUNGSI FEEDFORWARD JST ---
+# --- 3. Feedforward JST ---
 def feedforward_app(X, W1, b1, W2, b2, W3=None, b3=None):
     z1 = np.dot(X, W1) + b1
     a1 = np.maximum(0, z1) # ReLU
     z2 = np.dot(a1, W2) + b2
-    
-    # Kondisional check jika model menggunakan 2 Hidden Layer (Cara 2) atau 1 Hidden Layer
+   
     if W3 is not None and b3 is not None:
         a2 = np.maximum(0, z2) # ReLU untuk layer 2
         z3 = np.dot(a2, W3) + b3
@@ -79,17 +81,15 @@ def feedforward_app(X, W1, b1, W2, b2, W3=None, b3=None):
         
     return 1 / (1 + np.exp(-np.clip(out, -50, 50))) # Sigmoid
 
-# --- 4. ANTARMUKA (UI) STREAMLIT ---
+# --- 4. (UI) Streamlit ---
 st.set_page_config(page_title="Waste Classification JST", page_icon="♻️")
 st.title("♻️ Klasifikasi Sampah Menggunakan JST")
 st.write("Ambil foto sampah organik atau anorganik (recyclable) langsung menggunakan kamera perangkat Anda.")
 
 try:
-    # Memuat model pkl yang tersimpan
     model = load_model_app("model_jst_waste.pkl")
     st.sidebar.success("✅ Model JST Berhasil Dimuat!")
     
-    # Menampilkan info arsitektur model di sidebar sebagai pelengkap laporan
     st.sidebar.markdown("### 📋 Detail Arsitektur:")
     st.sidebar.write(f"- Fitur Input: {model.get('input_size', 49)}")
     if "W3" in model:
@@ -110,16 +110,13 @@ with tab1:
 with tab2:
     uploaded_file = st.file_uploader("Pilih file gambar...", type=["jpg", "jpeg", "png"])
 
-# Satukan penanganan data dari Kamera maupun dari Upload File
 target_image = None
 if picture is not None:
     target_image = picture
 elif uploaded_file is not None:
     target_image = uploaded_file
 
-# Jika ada gambar yang masuk (dari salah satu opsi di atas)
 if target_image is not None:
-    # Konversi byte stream gambar dari Streamlit menjadi matriks BGR OpenCV
     bytes_data = target_image.getvalue()
     img_array = np.frombuffer(bytes_data, np.uint8)
     img_opencv = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
